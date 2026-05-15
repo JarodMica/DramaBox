@@ -16,9 +16,6 @@ logger = logging.getLogger(__name__)
 DRAMABOX_REPO = "ResembleAI/Dramabox"
 GEMMA_REPO = "unsloth/gemma-3-12b-it-bnb-4bit"
 
-# Default cache directory
-DEFAULT_CACHE = os.path.join(os.environ.get("HF_HOME", os.path.expanduser("~")), ".cache", "dramabox")
-
 # Model files in the HF repo (flat structure)
 MODEL_FILES = {
     "transformer": "dramabox-dit-v1.safetensors",
@@ -32,13 +29,12 @@ def get_model_path(name: str, cache_dir: str = None) -> str:
 
     Args:
         name: One of 'transformer', 'audio_components', 'silence_latent'
-        cache_dir: Local cache directory (default: ~/.cache/dramabox)
+        cache_dir: Local cache directory. When unset, Hugging Face Hub uses
+            its default cache, usually ~/.cache/huggingface/hub.
 
     Returns:
         Local file path
     """
-    cache_dir = cache_dir or DEFAULT_CACHE
-
     if name not in MODEL_FILES:
         raise ValueError(f"Unknown model: {name}. Choose from: {list(MODEL_FILES.keys())}")
 
@@ -60,7 +56,6 @@ def get_gemma_path(cache_dir: str = None) -> str:
     the snapshot directory. Using the pre-quantized variant skips runtime
     bitsandbytes quantization and ~halves the Gemma load time.
     """
-    cache_dir = cache_dir or DEFAULT_CACHE
     logger.info(f"Fetching Gemma from {GEMMA_REPO}...")
 
     local_dir = snapshot_download(
@@ -83,7 +78,6 @@ def get_all_paths(cache_dir: str = None) -> dict:
             'gemma_root': '/path/to/unsloth/gemma-3-12b-it-bnb-4bit/',
         }
     """
-    cache_dir = cache_dir or DEFAULT_CACHE
     paths = {}
 
     for name in MODEL_FILES:

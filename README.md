@@ -37,6 +37,42 @@ Auto-downloaded from the HF model repo on first run.
 
 ## Quick Start
 
+### Installation
+
+```bash
+uv sync
+```
+
+The uv project metadata pins `torch` and `torchaudio` to the PyTorch CUDA 12.8 wheel index. Use `uv run` for all commands so they execute inside the managed environment.
+
+### Download models
+
+```bash
+uv run python src/model_downloader.py
+```
+
+This downloads the DramaBox checkpoints and the pre-quantized Gemma text encoder into Hugging Face's default cache, usually `~/.cache/huggingface/hub`. Set `HF_TOKEN` first if your Hugging Face account needs access to any model files.
+
+### Gradio app
+
+```bash
+uv run python app.py
+```
+
+Open `http://127.0.0.1:7860`. The app starts before loading the full model; the first generation downloads any missing files from the cache path above, warms the CUDA server, and then keeps it loaded for later requests.
+
+Optional runtime settings:
+
+```powershell
+$env:GRADIO_SERVER_PORT = "7861"
+$env:GRADIO_SHARE = "1"
+$env:DRAMABOX_DEVICE = "cuda"
+$env:LTX_DTYPE = "bf16"
+uv run python app.py
+```
+
+To stop the local app, press `Ctrl+C` in the terminal that launched it, or stop the Python process that owns the Gradio port.
+
 ### Warm server (recommended)
 
 ```python
@@ -54,17 +90,11 @@ server.generate_to_file(
 ### CLI
 
 ```bash
-python src/inference.py \
+uv run python src/inference.py \
   --voice-sample reference.wav \
   --prompt 'A woman speaks warmly, "Hello, how are you today?"' \
   --output output.wav \
   --cfg-scale 2.5 --stg-scale 1.5
-```
-
-### Gradio app
-
-```bash
-CUDA_VISIBLE_DEVICES=4 python app.py
 ```
 
 ## Inference Settings

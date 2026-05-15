@@ -1,0 +1,37 @@
+[project]
+name = "dramabox"
+version = "0.1.0"
+description = "Expressive TTS with voice cloning built on LTX-2."
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "torch==2.8.0",
+    "torchaudio==2.8.0",
+    "pydantic==2.10.6",
+    "safetensors>=0.4.0",
+    "accelerate>=0.25.0",
+    "peft>=0.7.0",
+    "av>=12.0.0",
+    "einops>=0.7.0",
+    "pyyaml>=6.0",
+    "sentencepiece>=0.1.99",
+    "transformers>=4.45.0",
+    "huggingface-hub>=0.20.0,<1.0",
+    "bitsandbytes>=0.45.0",
+    "gradio==5.7.1",
+    "spaces>=0.30.0",
+    "soundfile>=0.12.0",
+    "resemble-perth @ git+https://github.com/resemble-ai/Perth.git@master",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchaudio = { index = "pytorch-cu128" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true

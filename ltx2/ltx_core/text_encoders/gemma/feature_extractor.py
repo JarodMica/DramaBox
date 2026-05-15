@@ -83,6 +83,30 @@ def _rescale_norm(x: torch.Tensor, target_dim: int, source_dim: int) -> torch.Te
     return x * math.sqrt(target_dim / source_dim)
 
 
+def _stack_expected_hidden_states(
+    hidden_states: torch.Tensor | tuple[torch.Tensor, ...],
+    expected_layers: int,
+) -> torch.Tensor:
+    """Stack Gemma hidden states, handling doubled layouts from newer HF builds."""
+    if not isinstance(hidden_states, (list, tuple)):
+        return hidden_states
+
+    states = tuple(hidden_states)
+    if len(states) == expected_layers:
+        return torch.stack(states, dim=-1)
+
+    # Some transformers/Gemma3 combinations expose two states per decoder
+    # layer plus the embedding state. The projection checkpoints expect the
+    # embedding state plus one state per layer.
+    if len(states) == expected_layers * 2 - 1:
+        return torch.stack(states[::2], dim=-1)
+
+    raise ValueError(
+        f"Unexpected Gemma hidden-state count: got {len(states)}, expected "
+        f"{expected_layers} or {expected_layers * 2 - 1}."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Feature extractor variants
 # ---------------------------------------------------------------------------
@@ -99,7 +123,8 @@ class FeatureExtractorV1(nn.Module):
     def forward(
         self, hidden_states: torch.Tensor, attention_mask: torch.Tensor, padding_side: str = "left"
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
-        encoded = torch.stack(hidden_states, dim=-1) if isinstance(hidden_states, (list, tuple)) else hidden_states
+        expected_layers = self.aggregate_embed.in_features // self.aggregate_embed.out_features
+        encoded = _stack_expected_hidden_states(hidden_states, expected_layers)
         dtype = encoded.dtype
         sequence_lengths = attention_mask.sum(dim=-1)
         normed = _norm_and_concat_padded_batch(encoded, sequence_lengths, padding_side)
@@ -129,7 +154,9 @@ class FeatureExtractorV2(nn.Module):
         attention_mask: torch.Tensor,
         padding_side: str = "left",  # noqa: ARG002
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
-        encoded = torch.stack(hidden_states, dim=-1) if isinstance(hidden_states, (list, tuple)) else hidden_states
+        aggregate_embed = self.audio_aggregate_embed or self.video_aggregate_embed
+        expected_layers = aggregate_embed.in_features // self.embedding_dim
+        encoded = _stack_expected_hidden_states(hidden_states, expected_layers)
         normed = norm_and_concat_per_token_rms(encoded, attention_mask)
         normed = normed.to(encoded.dtype)
         v_dim = self.video_aggregate_embed.out_features

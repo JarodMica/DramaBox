@@ -9,10 +9,12 @@ import logging
 import os
 import sys
 import tempfile
+import threading
 import time
 
 import gradio as gr
 import spaces
+import torch
 
 # Local src import.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
@@ -21,24 +23,50 @@ from model_downloader import get_all_paths  # noqa: E402
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logging.info("Fetching DramaBox checkpoints from HuggingFace (cached after first run)...")
-PATHS = get_all_paths()
 
-# Module-level warm load (same pattern as IndexTTS-2-Demo on ZeroGPU). The
-# `spaces` package patches torch so that .to("cuda") at import time pins the
-# weights into ZeroGPU's shared memory; each @spaces.GPU call then maps them
-# onto the actual GPU instantly. First user request is ~2.5 s instead of ~30 s.
-logging.info("Loading DramaBox warm server (Gemma + DiT + VAE + Decoder)...")
-tts = TTSServer(
-    checkpoint=PATHS["transformer"],
-    full_checkpoint=PATHS["audio_components"],
-    gemma_root=PATHS["gemma_root"],
-    device="cuda",
-    dtype=os.environ.get("LTX_DTYPE", "bf16"),
-    compile_model=False,                  # torch.compile breaks under ZeroGPU's brief GPU windows
-    bnb_4bit=True,                        # unsloth Gemma is pre-quantized
-)
-logging.info("TTSServer ready.")
+PATHS = None
+tts = None
+_tts_lock = threading.Lock()
+
+
+def _preferred_device() -> str:
+    return os.environ.get("DRAMABOX_DEVICE") or ("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def ensure_paths() -> dict:
+    global PATHS
+    if PATHS is None:
+        logging.info("Fetching DramaBox checkpoints from HuggingFace (cached after first run)...")
+        PATHS = get_all_paths()
+    return PATHS
+
+
+def ensure_tts() -> TTSServer:
+    global tts
+    with _tts_lock:
+        if tts is not None:
+            return tts
+
+        device = _preferred_device()
+        if device == "cpu":
+            raise gr.Error(
+                "DramaBox needs a CUDA GPU with roughly 24 GB VRAM. "
+                "Install a CUDA PyTorch build and run on a CUDA machine, or set DRAMABOX_DEVICE=cuda."
+            )
+
+        paths = ensure_paths()
+        logging.info("Loading DramaBox warm server (Gemma + DiT + VAE + Decoder)...")
+        tts = TTSServer(
+            checkpoint=paths["transformer"],
+            full_checkpoint=paths["audio_components"],
+            gemma_root=paths["gemma_root"],
+            device=device,
+            dtype=os.environ.get("LTX_DTYPE", "bf16"),
+            compile_model=os.environ.get("DRAMABOX_COMPILE", "0") == "1",
+            bnb_4bit=os.environ.get("DRAMABOX_BNB_4BIT", "1") == "1",
+        )
+        logging.info("TTSServer ready.")
+        return tts
 
 
 # ── Example prompts shipped with a matching voice reference ──────────────────
@@ -172,7 +200,8 @@ def on_generate(prompt: str, audio_ref, cfg: float, stg: float, dur_mult: float,
     t0 = time.time()
     ref_path = audio_ref if audio_ref and os.path.exists(str(audio_ref)) else None
     output = tempfile.mktemp(suffix=".wav", prefix="dramabox_", dir="output")
-    tts.generate_to_file(
+    server = ensure_tts()
+    server.generate_to_file(
         prompt=prompt,
         output=output,
         voice_ref=ref_path,
@@ -309,4 +338,5 @@ if __name__ == "__main__":
         share=os.environ.get("GRADIO_SHARE", "0") == "1",
         ssr_mode=False,                       # Gradio 5 SSR + ZeroGPU fork has known race conditions
         show_api=False,                       # don't auto-derive Python schemas (caused bool-iter / dict-cache crashes)
+        show_error=True,
     )
