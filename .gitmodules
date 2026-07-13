@@ -1,0 +1,6 @@
+[submodule "LavaSR"]
+	path = LavaSR
+	url = https://github.com/ysharma3501/LavaSR.git
+[submodule "NovaSR"]
+	path = NovaSR
+	url = https://github.com/ysharma3501/NovaSR

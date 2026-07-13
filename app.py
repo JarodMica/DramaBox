@@ -20,6 +20,7 @@ import torch
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 from inference_server import TTSServer  # noqa: E402
 from model_downloader import get_all_paths  # noqa: E402
+from audio_super_resolution import enhance_audio_file  # noqa: E402
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -194,25 +195,45 @@ EXAMPLES: list[tuple[str, str, str]] = [
 
 @spaces.GPU(duration=120)
 def on_generate(prompt: str, audio_ref, cfg: float, stg: float, dur_mult: float,
-                gen_dur: float, ref_dur: float, seed: int):
+                gen_dur: float, ref_dur: float, seed: int, output_modes: list[str],
+                lavasr_denoise: bool, lavasr_batch: bool):
     if not prompt or not prompt.strip():
         raise gr.Error("Prompt is empty.")
+    output_modes = output_modes or ["Raw"]
     t0 = time.time()
     ref_path = audio_ref if audio_ref and os.path.exists(str(audio_ref)) else None
-    output = tempfile.mktemp(suffix=".wav", prefix="dramabox_", dir="output")
+    raw_output = tempfile.mktemp(suffix=".wav", prefix="dramabox_", dir="output")
     server = ensure_tts()
     server.generate_to_file(
         prompt=prompt,
-        output=output,
+        output=raw_output,
         voice_ref=ref_path,
         cfg_scale=cfg, stg_scale=stg,
         duration_multiplier=dur_mult, seed=int(seed),
         gen_duration=float(gen_dur),
         ref_duration=float(ref_dur),
     )
+    raw_result = raw_output if "Raw" in output_modes else None
+    nova_result = None
+    lava_result = None
+    try:
+        if "NovaSR" in output_modes:
+            nova_result = enhance_audio_file(raw_output, "NovaSR")
+        if "LavaSR" in output_modes:
+            lava_result = enhance_audio_file(
+                raw_output,
+                "LavaSR",
+                lavasr_denoise=bool(lavasr_denoise),
+                lavasr_batch=bool(lavasr_batch),
+            )
+    except Exception as exc:
+        raise gr.Error(f"Audio enhancement failed: {exc}") from exc
     elapsed = time.time() - t0
-    logging.info(f"Generated in {elapsed:.2f}s -> {output}")
-    return output
+    logging.info(
+        "Generated in %.2fs -> raw=%s nova=%s lava=%s",
+        elapsed, raw_result, nova_result, lava_result,
+    )
+    return raw_result, nova_result, lava_result
 
 
 # ── UI ──────────────────────────────────────────────────────────────────────
@@ -284,7 +305,16 @@ with gr.Blocks(
                                            label="Reference duration (s) — how many seconds of the "
                                                  "uploaded voice reference the model conditions on")
                 seed_input = gr.Number(value=42, label="Seed", precision=0)
-            audio_out = gr.Audio(label="Generated audio", type="filepath")
+                output_modes = gr.CheckboxGroup(
+                    choices=["Raw", "NovaSR", "LavaSR"],
+                    value=["Raw"],
+                    label="Audio outputs",
+                )
+                lavasr_denoise = gr.Checkbox(value=False, label="LavaSR denoise")
+                lavasr_batch = gr.Checkbox(value=False, label="LavaSR batch long audio")
+            raw_audio_out = gr.Audio(label="Generated audio", type="filepath")
+            nova_audio_out = gr.Audio(label="NovaSR enhanced audio", type="filepath")
+            lava_audio_out = gr.Audio(label="LavaSR enhanced audio", type="filepath")
             with gr.Accordion("Prompt writing guide", open=False):
                 gr.Markdown(
                     "**Structure:** `<speaker description>, \"<dialogue>\" <action> \"<more dialogue>\"`\n\n"
@@ -300,8 +330,9 @@ with gr.Blocks(
     gen_btn.click(
         on_generate,
         inputs=[prompt_box, audio_ref, cfg_slider, stg_slider,
-                dur_slider, gen_dur_slider, ref_dur_slider, seed_input],
-        outputs=[audio_out],
+                dur_slider, gen_dur_slider, ref_dur_slider, seed_input,
+                output_modes, lavasr_denoise, lavasr_batch],
+        outputs=[raw_audio_out, nova_audio_out, lava_audio_out],
     )
 
     # Click-to-generate example table. Each row preloads a paired voice
@@ -312,17 +343,18 @@ with gr.Blocks(
             # rows tagged "30s •" force a 30-second target duration; the rest
             # use the prompt-driven auto estimate (gen_dur = 0).
             [name, prompt, voice_path, 2.5, 1.5, 1.1,
-             30.0 if name.startswith("30s") else 0.0, 10.0, 42]
+             30.0 if name.startswith("30s") else 0.0, 10.0, 42, ["Raw"], False, False]
             for name, voice_path, prompt in EXAMPLES
         ],
         example_labels=[name for name, _, _ in EXAMPLES],
         inputs=[gr.Textbox(visible=False, label="Scene"),
                 prompt_box, audio_ref,
                 cfg_slider, stg_slider, dur_slider, gen_dur_slider,
-                ref_dur_slider, seed_input],
-        outputs=[audio_out],
-        fn=lambda _name, prompt, ref, cfg, stg, dur, gen_dur, ref_dur, seed: on_generate(
-            prompt, ref, cfg, stg, dur, gen_dur, ref_dur, seed),
+                ref_dur_slider, seed_input, output_modes, lavasr_denoise, lavasr_batch],
+        outputs=[raw_audio_out, nova_audio_out, lava_audio_out],
+        fn=lambda _name, prompt, ref, cfg, stg, dur, gen_dur, ref_dur, seed,
+                  modes, denoise, batch: on_generate(
+            prompt, ref, cfg, stg, dur, gen_dur, ref_dur, seed, modes, denoise, batch),
         cache_examples=False,
         run_on_click=True,
         examples_per_page=20,
