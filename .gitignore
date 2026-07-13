@@ -8,3 +8,4 @@ models/*.safetensors
 *.log
 .DS_Store
 output/
+tts_test_outputs/

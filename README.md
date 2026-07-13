@@ -87,6 +87,40 @@ server.generate_to_file(
 )
 ```
 
+### Stable Python API
+
+Audiobook Maker and other local applications can use the CUDA-only class adapter without launching Gradio:
+
+```python
+from dramabox_api import DramaBoxTTSEngine
+
+engine = DramaBoxTTSEngine()
+engine.tts_load(
+    model_path="models/dramabox",
+    reference_audio_path="reference.wav",  # optional; no transcript required
+    device="cuda",
+)
+output = engine.tts_inference(
+    text="The lantern still burned beside the window.",
+    output_path="output.wav",
+    voice_description="A calm audiobook narrator speaks with measured warmth",
+    seed=42,
+)
+engine.close()
+print(output)
+```
+
+`model_path` must contain `dramabox-dit-v1.safetensors`,
+`dramabox-audio-components.safetensors`, and a
+`gemma-3-12b-it-bnb-4bit/` directory. Explicit checkpoint paths are also
+accepted. The adapter requires CUDA and never silently falls back to CPU.
+
+Run the executable two-output API smoke test with Python 3.11:
+
+```bash
+uv run python test_tts_api.py --reference-audio path/to/reference.wav
+```
+
 ### CLI
 
 ```bash

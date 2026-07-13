@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "dramabox"
 version = "0.1.0"
@@ -24,10 +28,17 @@ dependencies = [
     "resemble-perth @ git+https://github.com/resemble-ai/Perth.git@master",
     "librosa>=0.10.0",
     "vocos",
+    "hf-xet>=1.5.0",
 ]
 
+[tool.hatch.build.targets.wheel]
+packages = ["dramabox_api"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.uv]
-package = false
+package = true
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu128" }

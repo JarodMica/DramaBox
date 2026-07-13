@@ -433,13 +433,14 @@ wheels = [
 [[package]]
 name = "dramabox"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "accelerate" },
     { name = "av" },
     { name = "bitsandbytes" },
     { name = "einops" },
     { name = "gradio" },
+    { name = "hf-xet" },
     { name = "huggingface-hub" },
     { name = "librosa" },
     { name = "peft" },
@@ -463,6 +464,7 @@ requires-dist = [
     { name = "bitsandbytes", specifier = ">=0.45.0" },
     { name = "einops", specifier = ">=0.7.0" },
     { name = "gradio", specifier = "==5.7.1" },
+    { name = "hf-xet", specifier = ">=1.5.0" },
     { name = "huggingface-hub", specifier = ">=0.20.0,<1.0" },
     { name = "librosa", specifier = ">=0.10.0" },
     { name = "peft", specifier = ">=0.7.0" },
