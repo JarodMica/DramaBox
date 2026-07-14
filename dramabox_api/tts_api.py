@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gc
+import re
 import sys
 import threading
 from pathlib import Path
@@ -156,9 +157,7 @@ class DramaBoxTTSEngine:
 
     @staticmethod
     def _build_prompt(text: str, voice_description: str) -> str:
-        description = str(voice_description or "").strip()
-        if not description:
-            raise ValueError("DramaBox voice_description must not be empty.")
+        description = DramaBoxTTSEngine._normalize_voice_description(voice_description)
         spoken_text = text.replace('"', "'")
         return f'{description}, "{spoken_text}"'
 
@@ -179,6 +178,46 @@ class DramaBoxTTSEngine:
             ) from exc
         self._server_class = TTSServer
         return self._server_class
+
+    @staticmethod
+    def _normalize_voice_description(voice_description: str) -> str:
+        description = " ".join(str(voice_description or "").split()).strip(" ,.;:")
+        if not description:
+            raise ValueError("DramaBox voice_description must not be empty.")
+
+        participle_replacements = {
+            "narrating": "narrates",
+            "reading": "reads",
+            "saying": "says",
+            "shouting": "shouts",
+            "speaking": "speaks",
+            "whispering": "whispers",
+            "yelling": "yells",
+        }
+        for participle, finite_verb in participle_replacements.items():
+            pattern = re.compile(rf"\b{participle}\b", flags=re.IGNORECASE)
+            if pattern.search(description):
+                description = pattern.sub(finite_verb, description, count=1)
+                break
+
+        speech_verb_pattern = re.compile(
+            r"\b(?:cries|exclaims|laughs|murmurs|narrates|reads|replies|says|"
+            r"shouts|sings|speaks|whispers|yells)\b",
+            flags=re.IGNORECASE,
+        )
+        if speech_verb_pattern.search(description):
+            return description
+
+        speaker_noun_pattern = re.compile(
+            r"\b(?:boy|character|girl|host|man|narrator|person|speaker|storyteller|voice|woman)\b",
+            flags=re.IGNORECASE,
+        )
+        if speaker_noun_pattern.search(description):
+            return f"{description} speaks"
+        first_word = description.split(maxsplit=1)[0].lower()
+        if first_word.endswith("ly") or first_word in {"at", "in", "with"}:
+            return f"A narrator speaks {description}"
+        return f"A narrator speaks with {description}"
 
     @staticmethod
     def _require_cuda(device: str) -> None:
