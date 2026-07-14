@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gc
 import re
+import secrets
 import sys
 import threading
 from pathlib import Path
@@ -48,7 +49,7 @@ class DramaBoxTTSEngine:
         duration_multiplier: float = 1.1,
         target_duration: float = 0.0,
         reference_duration: float = 10.0,
-        seed: int = 42,
+        seed: int = -1,
         rescale_scale: str | float = "auto",
         watermark: bool = True,
         raw_prompt: bool = False,
@@ -85,7 +86,7 @@ class DramaBoxTTSEngine:
                 cfg_scale=float(cfg_scale),
                 stg_scale=float(stg_scale),
                 duration_multiplier=float(duration_multiplier),
-                seed=int(seed),
+                seed=self._resolve_seed(seed),
                 ref_duration=float(reference_duration),
                 rescale_scale=rescale_scale,
                 gen_duration=float(target_duration),
@@ -306,3 +307,12 @@ class DramaBoxTTSEngine:
             raise ValueError("DramaBox output_path must end in .wav.")
         destination.parent.mkdir(parents=True, exist_ok=True)
         return destination
+
+    @staticmethod
+    def _resolve_seed(seed: int) -> int:
+        normalized_seed = int(seed)
+        if normalized_seed == -1:
+            return secrets.randbelow(10_000_000)
+        if normalized_seed < -1:
+            raise ValueError("DramaBox seed must be -1 (random) or a non-negative integer.")
+        return normalized_seed

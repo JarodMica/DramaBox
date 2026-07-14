@@ -104,7 +104,7 @@ output = engine.tts_inference(
     text="The lantern still burned beside the window.",
     output_path="output.wav",
     voice_description="A calm audiobook narrator speaks with measured warmth",
-    seed=42,
+    seed=-1,  # fresh random take; use a non-negative integer to reproduce one
 )
 engine.close()
 print(output)
@@ -114,6 +114,8 @@ print(output)
 `dramabox-audio-components.safetensors`, and a
 `gemma-3-12b-it-bnb-4bit/` directory. Explicit checkpoint paths are also
 accepted. The adapter requires CUDA and never silently falls back to CPU.
+Seed `-1` is the default and resolves a fresh non-negative seed for each call;
+pass a fixed non-negative integer when exact take reproducibility is required.
 
 Run the executable two-output API smoke test with Python 3.11:
 
